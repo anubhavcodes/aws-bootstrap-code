@@ -1,28 +1,30 @@
-#!/bin/bash
-source ~/.bash_profile
 STACK_NAME=awsbootstrap
 REGION=eu-central-1
-EC2_INSTANCE_TYPE=t2.micro
+EC2_INSTANCE_TYPE=t2.micro 
+
 GH_ACCESS_TOKEN=$GITHUB_API_KEY
-GH_OWNER="anubhavcodes"
-GH_REPO="aws-bootstrap-code"
+GH_OWNER=anubhavcodes
+GH_REPO=aws-bootstrap-code
 GH_BRANCH=master
+
 AWS_ACCOUNT_ID=`aws sts get-caller-identity --query "Account" --output text`
-CFN_BUCKET="$STACK_NAME-cfn-$AWS_ACCOUNT_ID"
 CODEPIPELINE_BUCKET="$STACK_NAME-$REGION-codepipeline-$AWS_ACCOUNT_ID" 
+echo $CODEPIPELINE_BUCKET
+
+CFN_BUCKET="$STACK_NAME-cfn-$AWS_ACCOUNT_ID"
 echo $CFN_BUCKET
 
-# Deploy the setup.yml template. S3 buckets
-echo -e "\n\n==========Deploying setup.yml=============="
+
+# Deploys static resources
+echo "\n\n=========== Deploying setup.yml ==========="
 aws cloudformation deploy \
-  --region $REGION \
   --stack-name $STACK_NAME-setup \
   --template-file setup.yml \
   --no-fail-on-empty-changeset \
   --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides CodePipelineBucket=$CODEPIPELINE_BUCKET \
+  --parameter-overrides \
+    CodePipelineBucket=$CODEPIPELINE_BUCKET \
     CloudFormationBucket=$CFN_BUCKET
-
 
 # Package up CloudFormation templates into an S3 bucket
 echo "\n\n=========== Packaging main.yml ===========" 
@@ -31,7 +33,7 @@ mkdir -p ./cfn_output
 PACKAGE_ERR="$(aws cloudformation package \
   --region $REGION \
   --template main.yml \
-  --s3-bucket $CFN_BUCKET \
+  --s3-bucket ${CFN_BUCKET//[$'\r']} \
   --output-template-file ./cfn_output/main.yml 2>&1)"
 
 if ! [[ $PACKAGE_ERR =~ "Successfully packaged artifacts" ]]; then
@@ -40,23 +42,25 @@ if ! [[ $PACKAGE_ERR =~ "Successfully packaged artifacts" ]]; then
   exit 1
 fi
 
-# Deploy the cloudformation template
-echo -e "\n\n==========Deploying main.yml=============="
+
+# Deploy the CloudFormation template
+echo "\n\n=========== Deploying main.yml ===========" 
 aws cloudformation deploy \
   --region $REGION \
   --stack-name $STACK_NAME \
   --template-file ./cfn_output/main.yml \
   --no-fail-on-empty-changeset \
   --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides EC2InstanceType=$EC2_INSTANCE_TYPE \
+  --parameter-overrides \
+    EC2InstanceType=$EC2_INSTANCE_TYPE \
     GitHubOwner=$GH_OWNER \
     GitHubRepo=$GH_REPO \
     GitHubBranch=$GH_BRANCH \
     GitHubPersonalAccessToken=$GH_ACCESS_TOKEN \
     CodePipelineBucket=$CODEPIPELINE_BUCKET
 
-# If the deploy succeeded, show the DNS name of the created instance
-if [ $? -eq 0 ]; then
-  aws cloudformation list-exports \
-    --query "Exports[?ends_with(Name,'LBEndpoint')].Value" 
+# If the deploy succeeded, show the DNS name of the endpoints
+  if [ $? -eq 0 ]; then
+    aws cloudformation list-exports \
+      --query "Exports[?ends_with(Name,'LBEndpoint')].Value"
 fi
