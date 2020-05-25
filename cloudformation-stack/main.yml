@@ -22,7 +22,9 @@ Parameters:
   GitHubPersonalAccessToken:
     Type: String
     NoEcho: true
-    Description: 'A GitHub personal access token with "repo" and "admin:repo_hook" permissions.'
+    Description: 'A GitHub personal access token with "repo" and
+"admin:repo_hook" permissions.'
+
 
 Resources:
 
@@ -55,7 +57,7 @@ Resources:
           Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/CloudWatchFullAccess
-        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy 
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
@@ -178,11 +180,6 @@ Resources:
     Properties:
       Roles:
         - Ref: InstanceRole
-  InstanceProfile:
-    Type: "AWS::IAM::InstanceProfile"
-    Properties:
-      Roles:
-        - Ref: InstanceRole
   Instance:
     Type: AWS::EC2::Instance
     CreationPolicy: 
@@ -194,8 +191,17 @@ Resources:
         config:
           packages: 
             yum:
-              wget: []
-              unzip: []
+             ruby: []
+              #wget: []
+              #unzip: []
+          files:
+            /home/ec2-user/install:
+              source: !Sub "https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install"
+              mode: "000755" # executable
+          commands:
+            00-install-cd-agent:
+              command: "./install auto"
+              cwd: "/home/ec2-user/"
     Properties:
       ImageId: !Ref EC2AMI
       InstanceType: !Ref EC2InstanceType
@@ -216,9 +222,6 @@ Resources:
           # Get latest cfn scripts; https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html#cfninit
           yum install -y aws-cfn-bootstrap
 
-          # Have CloudFormation install any files and packages from the metadata
-          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance 
-
           cat > /tmp/install_script.sh << EOF 
             # START
             echo "Setting up NodeJS Environment"
@@ -234,22 +237,24 @@ Resources:
             nvm use v12.7.0
 
             # Download latest code, unzip it into /home/ec2-user/app
-            wget https://github.com/anubhavcodes/aws-bootstrap-code/archive/master.zip 
-            unzip master.zip
-            mv aws-bootstrap-code-master app
+            #wget https://github.com/{{username}}/aws-bootstrap/archive/master.zip 
+            #unzip master.zip
+            #mv aws-bootstrap-master app
 
             # Create log directory
             mkdir -p /home/ec2-user/app/logs
 
             # Run server
-            cd app/basic-web-app
-            npm install
-            npm start
+            #cd app
+            #npm install
+            #npm start
           EOF
 
           chown ec2-user:ec2-user /tmp/install_script.sh && chmod a+x /tmp/install_script.sh
-          sleep 1; su - ec2-user -c "/tmp/install_script.sh" 
+          sleep 1; sudo su - ec2-user -c "/tmp/install_script.sh" 
 
+          # Have CloudFormation install any files and packages from the metadata
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
           # Signal to CloudFormation that the instance is ready
           /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance 
           
